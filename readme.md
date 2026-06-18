@@ -99,7 +99,40 @@ pytest
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio OpenAI-compatible API |
 | `LMSTUDIO_API_KEY` | `lm-studio` | Dummy key (LM Studio ignores it) |
 | `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b-qat` | Loaded model id from LM Studio |
+| `LMSTUDIO_REQUEST_TIMEOUT` | `300` | HTTP timeout per LLM request (seconds) |
+| `LMSTUDIO_DONT_FORCE_STRUCTURED_OUTPUT` | `true` | Put JSON schema in prompt (better for LM Studio) |
+| `AGENT_FLASH_MODE` | `true` | Minimal output schema — required for local models |
+| `AGENT_USE_THINKING` | `false` | Prevents huge `thinking` JSON that gets truncated |
+| `AGENT_MAX_CLICKABLE_ELEMENTS_LENGTH` | `8000` | Smaller DOM payload → faster, valid JSON |
+| `AGENT_LLM_TIMEOUT` | `300` | browser-use per-step LLM timeout (default is 75s) |
+| `AGENT_STEP_TIMEOUT` | `300` | Max seconds per agent step |
+| `AGENT_ENABLE_PLANNING` | `false` | Skip extra planning LLM calls (faster locally) |
 | `AGENT_MAX_STEPS` | `15` | Max browser actions per scrape |
-| `AGENT_USE_VISION` | `false` | Send screenshots to Gemma 4 (multimodal) |
+| `AGENT_USE_VISION` | `false` | Send screenshots to Gemma 4 (much slower locally) |
 
 If the model id differs on your machine, copy the exact string from the LM Studio server panel or `GET /v1/models`.
+
+## Troubleshooting slow / timed-out runs
+
+**Symptom:** `Invalid JSON: expected value at line 1` with `` ```json `` in the input
+
+LM Studio wraps JSON in markdown fences and sometimes returns `action` as an object instead of an array. The app normalizes both automatically; you can also add to your prompt: raw JSON only, no code fences.
+
+**Symptom:** `Invalid JSON: EOF while parsing` with `"thinking": "The us...`
+
+Gemma 4's thinking mode dumps a huge `thinking` field into the JSON response, which gets cut off mid-object. Fixes:
+
+1. Set `AGENT_FLASH_MODE=true` and `AGENT_USE_THINKING=false` (defaults above)
+2. **Disable "Enable Thinking"** in LM Studio for this model
+3. Set `LMSTUDIO_DONT_FORCE_STRUCTURED_OUTPUT=true`
+
+**Symptom:** `LLM call timed out after 75 seconds`
+
+browser-use defaults to a 75s LLM timeout (tuned for cloud APIs). A local 26B model often needs 2–5 minutes per step. The settings above raise that to 300s.
+
+**Also check in LM Studio:**
+
+1. **Disable "Enable Thinking"** on Gemma 4 — thinking tokens run before the answer and easily blow past timeouts.
+2. **Keep `AGENT_USE_VISION=false`** unless you need screenshots — vision doubles payload size and inference time.
+3. **Use focused `instructions`** — e.g. `"Find the follower count shown on the profile"` instead of asking to extract the whole page.
+4. Watch LM Studio's server log while a scrape runs — if tokens/sec is very low, the model may still be loading or you're RAM-bound (16GB minimum for this model).
